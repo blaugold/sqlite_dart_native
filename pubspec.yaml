@@ -18,6 +18,8 @@ dev_dependencies:
 
 ffigen:
   output: lib/src/sqlite_bindings.dart
+  preamble: |
+    // ignore_for_file: unused_element
   headers:
     entry-points:
       - src/sqlite/sqlite3.h
