@@ -10,7 +10,7 @@ void main(List<String> args) async {
     name: 'sqlite',
     assetId: 'package:sqlite_dart_native/src/sqlite_bindings.dart',
     sources: [
-      'vendor/sqlite/sqlite3.c',
+      'src/sqlite/sqlite3.c',
     ],
   );
   await cbuilder.run(

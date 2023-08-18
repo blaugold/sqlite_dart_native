@@ -5,7 +5,7 @@ import 'package:http/http.dart';
 
 const year = 2023;
 const version = '3.42.0';
-const sourcesPath = 'vendor/sqlite';
+const sourcesPath = 'src/sqlite';
 
 String get versionNumber {
   final versionComponents = version.split('.');
