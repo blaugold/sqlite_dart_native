@@ -1,4 +1,5 @@
 // ignore_for_file: unused_element
+// coverage:ignore-start
 
 // AUTO GENERATED FILE, DO NOT EDIT.
 //

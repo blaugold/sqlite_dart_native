@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:typed_data';
 
@@ -192,6 +193,7 @@ class Statement {
 
   final Database _db;
   final Pointer<sqlite3_stmt> _pointer;
+  final _namedParameterIndices = <String, int>{};
 
   /// The number of columns in each row of the result set.
   late final columnCount = sqlite3_column_count(_pointer);
@@ -226,6 +228,114 @@ class Statement {
   /// Resets this statement so that it can be executed again.
   void reset() => _db._checkResult(sqlite3_reset(_pointer));
 
+  void bindValues(Map<Object, Object?> values) => values.forEach(bindValue);
+
+  void bindValue(Object parameter, Object? value) {
+    switch (value) {
+      case null:
+        bindNull(parameter);
+      case final int value:
+        bindInteger(parameter, value);
+      case final double value:
+        bindFloat(parameter, value);
+      case final String value:
+        bindText(parameter, value);
+      case final Uint8List value:
+        bindBlob(parameter, value);
+      default:
+        throw ArgumentError.value(
+          value,
+          'value',
+          'is not of a type supported by SQLite',
+        );
+    }
+  }
+
+  void bindNull(Object parameter) {
+    _db._checkResult(sqlite3_bind_null(
+      _pointer,
+      _indexForParameter(parameter),
+    ));
+  }
+
+  void bindInteger(Object parameter, int value) {
+    _db._checkResult(sqlite3_bind_int64(
+      _pointer,
+      _indexForParameter(parameter),
+      value,
+    ));
+  }
+
+  void bindFloat(Object parameter, double value) {
+    _db._checkResult(sqlite3_bind_double(
+      _pointer,
+      _indexForParameter(parameter),
+      value,
+    ));
+  }
+
+  void bindText(Object parameter, String value) {
+    final index = _indexForParameter(parameter);
+    final encoded = utf8.encode(value);
+    final memory = malloc<Uint8>(encoded.length);
+    memory.asTypedList(encoded.length).setAll(0, encoded);
+
+    _db._checkResult(sqlite3_bind_text(
+      _pointer,
+      index,
+      memory.cast(),
+      encoded.length,
+      malloc.nativeFree,
+    ));
+  }
+
+  void bindBlob(Object parameter, Uint8List value) {
+    final index = _indexForParameter(parameter);
+    final memory = malloc<Uint8>(value.length);
+    memory.asTypedList(value.length).setAll(0, value);
+
+    _db._checkResult(sqlite3_bind_blob(
+      _pointer,
+      index,
+      memory.cast(),
+      value.length,
+      malloc.nativeFree,
+    ));
+  }
+
+  int _indexForParameter(Object parameter) {
+    return switch (parameter) {
+      final int parameter => parameter,
+      final String parameter => _indexForNamedParameter(parameter),
+      _ => throw ArgumentError.value(
+          parameter,
+          'parameter',
+          'is not of a supported type for a parameter',
+        ),
+    };
+  }
+
+  int _indexForNamedParameter(String parameter) {
+    return _namedParameterIndices.putIfAbsent(parameter, () {
+      return using((arena) {
+        final index = sqlite3_bind_parameter_index(
+          _pointer,
+          parameter.toNativeUtf8(allocator: arena).cast(),
+        );
+
+        if (index == 0) {
+          throw ArgumentError.value(
+            parameter,
+            'parameter',
+            'is not a known parameter name',
+          );
+        }
+
+        return index;
+      });
+    });
+  }
+
   /// Returns the [Datatype] of the value in the column at the given [index].
   Datatype type(int index) =>
       Datatype._fromCode(sqlite3_column_type(_pointer, index));
@@ -236,7 +346,7 @@ class Statement {
   /// Reads a column value as an integer.
   ///
   /// If the value is not an integer, it is converted to an integer.
-  int nonNullableInteger(int index) => sqlite3_column_int(_pointer, index);
+  int nonNullableInteger(int index) => sqlite3_column_int64(_pointer, index);
 
   /// Reads a column value as an integer, or null if the value is null.
   ///
