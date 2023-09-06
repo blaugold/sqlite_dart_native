@@ -45,7 +45,10 @@ class ErrorCode {
   }
 
   /// A description of this error code.
-  String get description => sqlite3_errstr(value).cast<Utf8>().toDartString();
+  String get description =>
+      // We don't have to ensure that _initializeSQLite is called here because
+      // this SQLite API does not require it.
+      sqlite3_errstr(value).cast<Utf8>().toDartString();
 
   @override
   bool operator ==(Object other) => other is ErrorCode && other.value == value;
@@ -70,6 +73,20 @@ class ErrorCode {
   }
 }
 
+/// Initializes the SQLite library and must be called before most other SQLite
+/// functions.
+///
+/// This function becomes a no-op after it is called once.
+void _initializeSQLite() {
+  final resultCode = sqlite3_initialize();
+  if (resultCode != SQLITE_OK) {
+    throw SQLiteException(
+      'Failed to initialize the SQLite library.',
+      ErrorCode(resultCode),
+    );
+  }
+}
+
 /// An SQLite database.
 ///
 /// You need to [close] a database when you are done with it in order to release
@@ -79,6 +96,8 @@ class Database {
   ///
   /// If the database does not exist, it will be created.
   factory Database(String path) {
+    _initializeSQLite();
+
     return using((arena) {
       final dbPtr = arena.allocate<Pointer<sqlite3>>(1);
       final resultCode =
