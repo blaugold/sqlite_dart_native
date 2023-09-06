@@ -347,7 +347,7 @@ class Statement {
       final String name => _indexForNamedParameter(name),
       _ => throw ArgumentError.value(
           indexOrName,
-          'parameter',
+          'indexOrName',
           'is not of a supported type for a parameter',
         ),
     };
@@ -364,7 +364,7 @@ class Statement {
         if (index == 0) {
           throw ArgumentError.value(
             name,
-            'name',
+            'indexOrName',
             'is not a known parameter name',
           );
         }
