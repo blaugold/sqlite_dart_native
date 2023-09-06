@@ -12,6 +12,11 @@ void main(List<String> args) async {
     sources: [
       'src/sqlite/sqlite3.c',
     ],
+    defines: {
+      if (buildConfig.target.os == OS.windows)
+        // Make all SQLite API symbols visible.
+        'SQLITE_API': '__declspec(dllexport)',
+    },
   );
   await cbuilder.run(
     buildConfig: buildConfig,
