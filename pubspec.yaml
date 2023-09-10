@@ -25,3 +25,9 @@ ffigen:
       - src/sqlite/sqlite3.h
       - src/sqlite/sqlite3ext.h
   ffi-native:
+  functions:
+    leaf:
+      include:
+        - '.*'
+  compiler-opts:
+    - '-DSQLITE_OMIT_DEPRECATED'
