@@ -30,6 +30,32 @@ void main() {
   });
 
   group('Statement', () {
+    test('columnName', () {
+      final db = Database.memory();
+      addTearDown(db.close);
+      final statement = db.prepareStatement('SELECT 1 AS a');
+      addTearDown(statement.finalize);
+      expect(statement.columnName(0), 'a');
+    });
+
+    test('valuesList', () {
+      final db = Database.memory();
+      addTearDown(db.close);
+      final statement = db.prepareStatement('SELECT 1 AS a');
+      addTearDown(statement.finalize);
+      expect(statement.step(), isTrue);
+      expect(statement.valuesList(), [1]);
+    });
+
+    test('valuesMap', () {
+      final db = Database.memory();
+      addTearDown(db.close);
+      final statement = db.prepareStatement('SELECT 1 AS a');
+      addTearDown(statement.finalize);
+      expect(statement.step(), isTrue);
+      expect(statement.valuesMap(), {'a': 1});
+    });
+
     group('bind', () {
       test('should thrown when providing unsupported parameter identifier', () {
         final db = Database.memory();
