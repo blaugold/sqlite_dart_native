@@ -1,0 +1,23 @@
+name: flutter_example
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0-134.0.dev <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  sqlite_dart_native:
+    path: ../..
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
