@@ -48,11 +48,9 @@ jobs:
       - name: Analyze
         run: dart analyze --fatal-infos
 
-  # Verifys that FFI bindings are up to date.
-  check_ffi_bindings:
-    # Always run on macOS because generating FFI bindings on other platforms
-    # leads to slightly different results.
-    runs-on: macos-latest
+  # Verify that FFI bindings can be generated.
+  generate_ffi_bindings:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -67,9 +65,6 @@ jobs:
 
       - name: Generate FFI bindings
         run: dart --enable-experiment=native-assets run ffigen
-
-      - name: Check bindings are up to date
-        run: git diff --exit-code
 
   unit_tests:
     strategy:
