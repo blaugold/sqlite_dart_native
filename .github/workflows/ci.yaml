@@ -50,7 +50,9 @@ jobs:
 
   # Verifys that FFI bindings are up to date.
   check_ffi_bindings:
-    runs-on: ubuntu-latest
+    # Always run on macOS because generating FFI bindings on other platforms
+    # leads to slightly different results.
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
