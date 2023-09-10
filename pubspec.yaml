@@ -23,7 +23,6 @@ ffigen:
   headers:
     entry-points:
       - src/sqlite/sqlite3.h
-      - src/sqlite/sqlite3ext.h
   ffi-native:
   functions:
     leaf:
