@@ -33,15 +33,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          sdk: ${{ env.DART_SDK }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
 
       - name: Get dependencies
-        run: |
-          dart pub get
-          dart pub get -C example/flutter_example
+        run: dart pub get
+
+      - name: Get dependencies for flutter_example
+        working-directory: example/flutter_example
+        run: flutter pub get
 
       - name: Analyze
         run: dart analyze --fatal-infos
