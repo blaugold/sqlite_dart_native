@@ -15,7 +15,7 @@ void main(List<String> args) async {
     ],
     // TODO: Make build options consumer configurable.
     defines: {
-      if (buildConfig.target.os == OS.windows)
+      if (buildConfig.targetOs == OS.windows)
         // Make all SQLite API symbols visible.
         'SQLITE_API': '__declspec(dllexport)',
       // Change the default to multi-threaded from serialized.
@@ -45,6 +45,15 @@ void main(List<String> args) async {
       'SQLITE_USE_ALLOCA': null,
       // We initialize SQLite manually, so don't do it automatically.
       'SQLITE_OMIT_AUTOINIT': null,
+      // We only use UTF-8, so don't there is no point including UTF-16 support.
+      'SQLITE_OMIT_UTF16': null,
+      if (buildConfig.buildMode == BuildMode.debug) ...{
+        // Enable SQLite internal checks.
+        'SQLITE_DEBUG': null,
+        'SQLITE_MEMDEBUG': null,
+        // Enable SQLite API usage checks.
+        'SQLITE_ENABLE_API_ARMOR': null
+      }
     },
   );
   await cbuilder.run(

@@ -374,6 +374,20 @@ class Statement {
     });
   }
 
+  /// Returns of the name assigned to the column at the given [index] in the
+  /// result set.
+  String columnName(int index) {
+    var pointer = sqlite3_column_name(_pointer, index);
+    if (pointer == nullptr) {
+      // If the pointer is null, memory allocation failed.
+      throw SQLiteException(
+        'Unable to get the name of the column at index $index.',
+        ErrorCode(SQLITE_NOMEM),
+      );
+    }
+    return pointer.cast<Utf8>().toDartString();
+  }
+
   /// Returns the [Datatype] of the value in the column at the given [index].
   Datatype type(int index) =>
       Datatype._fromCode(sqlite3_column_type(_pointer, index));
@@ -466,8 +480,15 @@ class Statement {
     throw UnimplementedError('Unknown datatype code: $code');
   }
 
-  /// Reads all column values without converting them.
-  List<Object?> values() => List.generate(columnCount, value);
+  /// Reads all column values without converting them and returns them as a
+  /// list.
+  List<Object?> valuesList() =>
+      [for (var i = 0; i < columnCount; i++) value(i)];
+
+  /// Reads all column values without converting them, and returns them as a
+  /// map from result set column names to values.
+  Map<String, Object?> valuesMap() =>
+      {for (var i = 0; i < columnCount; i++) columnName(i): value(i)};
 
   /// Creates a list of all the results in the result set by calling [fn] for
   /// each row.
