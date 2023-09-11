@@ -25,8 +25,16 @@ ffigen:
       - src/sqlite/sqlite3.h
   ffi-native:
   functions:
+    # TODO: Consider listing leaf functions explicitly to ensure that we don't
+    #       accidentally include a function that calls a Dart callback.
     leaf:
       include:
         - '.*'
+      exclude:
+        # These functions might call the Dart destructor of an extension function.
+        - sqlite3_create_function_v2
+        - sqlite3_close
+        # This functions might call the Dart callback of an extension function.
+        - sqlite3_step
   compiler-opts:
     - '-DSQLITE_OMIT_DEPRECATED'
