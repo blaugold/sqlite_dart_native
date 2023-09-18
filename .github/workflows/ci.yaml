@@ -92,7 +92,7 @@ jobs:
       matrix:
         os:
           # TODO: Enable more platforms once Flutter supports native assets on them.
-          # - ubuntu-latest
+          - ubuntu-latest
           - macos-latest
           # - windows-latest
       fail-fast: false
