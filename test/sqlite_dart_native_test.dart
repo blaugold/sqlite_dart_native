@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:sqlite_dart_native/sqlite_dart_native.dart';
+import 'package:sqlite_dart_native/src/sqlite_bindings.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -29,6 +30,67 @@ void main() {
     );
   });
 
+  group('Database', () {
+    group('createScalarFunction', () {
+      test('smoke', () {
+        final db = Database.memory();
+        addTearDown(db.close);
+        db.createScalarFunction(
+          'test',
+          argumentCount: 1,
+          (arguments) => arguments[0],
+        );
+        final results = db.execForSingleColumn("SELECT test('Hello world!')");
+        expect(results, ['Hello world!']);
+      });
+    });
+
+    group('createAggregateFunction', () {
+      test('sum', () {
+        final db = Database.memory();
+        addTearDown(db.close);
+        db.createAggregateFunction(
+          'sum',
+          argumentCount: 1,
+          SumAggregator.new,
+        );
+        db.exec('CREATE TABLE t(value INTEGER)');
+        db.exec('INSERT INTO t VALUES (1), (2), (3)');
+        final results = db.execForSingleColumn("SELECT sum(value) FROM t");
+        expect(results, [6]);
+      });
+    });
+
+    group('createWindowFunction', () {
+      test('sum', () {
+        final db = Database.memory();
+        addTearDown(db.close);
+        db.createWindowFunction(
+          'sum',
+          argumentCount: 1,
+          SumAggregator.new,
+        );
+        db.exec('CREATE TABLE t(x, y)');
+        db.exec(
+          "INSERT INTO t VALUES "
+          "('a', 4), ('b', 5), ('c', 3), ('d', 8), ('e', 1)",
+        );
+        final results = db.execForSingleColumn(
+          '''
+          SELECT
+            sum(y) OVER (
+              ORDER BY x
+              ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+            )
+          FROM t
+          ORDER BY x
+          ''',
+        );
+        expect(results, [9, 12, 16, 12, 9]);
+      });
+    });
+  });
+
   group('Statement', () {
     test('columnName', () {
       final db = Database.memory();
@@ -41,19 +103,17 @@ void main() {
     test('valuesList', () {
       final db = Database.memory();
       addTearDown(db.close);
-      final statement = db.prepareStatement('SELECT 1 AS a');
-      addTearDown(statement.finalize);
-      expect(statement.step(), isTrue);
-      expect(statement.valuesList(), [1]);
+      final results =
+          db.execMap('SELECT 1 AS a', (statement) => statement.valuesList());
+      expect(results.single, [1]);
     });
 
     test('valuesMap', () {
       final db = Database.memory();
       addTearDown(db.close);
-      final statement = db.prepareStatement('SELECT 1 AS a');
-      addTearDown(statement.finalize);
-      expect(statement.step(), isTrue);
-      expect(statement.valuesMap(), {'a': 1});
+      final results =
+          db.execMap('SELECT 1 AS a', (statement) => statement.valuesMap());
+      expect(results.single, {'a': 1});
     });
 
     group('bind', () {
@@ -171,4 +231,39 @@ void bindParameterTest({
   bind(statement, named ? '@a' : 1);
   expect(statement.step(), isTrue);
   expect(statement.value(0), valueMatcher);
+}
+
+class SumAggregator implements WindowAggregator {
+  int _sum = 0;
+
+  @override
+  Object? get currentValue => _sum;
+
+  @override
+  void onRow(List<Value> arguments) {
+    final value = arguments[0].integer;
+    if (value == null) {
+      throw SQLiteException(
+        'Argument of "sum" function must be an integer.',
+        ErrorCode(SQLITE_MISMATCH),
+      );
+    }
+    _sum += value;
+  }
+
+  @override
+  void onRemoveRow(List<Value> arguments) {
+    // The arguments are guaranteed to be the same as for onRow,
+    // so we don't have to check the type again.
+    final value = arguments[0].nonNullableInteger;
+    _sum -= value;
+  }
+
+  @override
+  int finalize() => _sum;
+}
+
+extension on Database {
+  List<Object?> execForSingleColumn(String sql) =>
+      execMap(sql, (statement) => statement.value(0));
 }

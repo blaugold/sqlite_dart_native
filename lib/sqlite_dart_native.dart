@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'src/custom_typedefs.dart';
 import 'src/sqlite_bindings.dart';
 
 /// An exception that is thrown when an SQLite operation fails.
@@ -21,6 +22,7 @@ class SQLiteException implements Exception {
 }
 
 /// An error code returned by SQLite that describes the cause of a failure.
+// TODO: Define constants for all error codes.
 class ErrorCode {
   /// Creates an [ErrorCode] from the given integer [value].
   const ErrorCode(this.value)
@@ -88,6 +90,25 @@ void _initializeSQLite() {
   }
 }
 
+/// The interface for an application defined aggregation function.
+abstract interface class Aggregator {
+  /// Called for each row the aggregation function is applied to.
+  void onRow(List<Value> arguments);
+
+  /// Called when the aggregation is finalized and must return the result.
+  Object? finalize();
+}
+
+/// The interface for an application defined window function.
+abstract interface class WindowAggregator implements Aggregator {
+  /// Called when the window function is evaluated for a row and must return
+  /// the current value of the window function.
+  Object? get currentValue;
+
+  /// Called for each row that is removed from the window.
+  void onRemoveRow(List<Value> arguments);
+}
+
 /// An SQLite database.
 ///
 /// You need to [close] a database when you are done with it in order to release
@@ -120,6 +141,9 @@ class Database {
 
   Database._(this._pointer);
 
+  static final _aggregators = <int, Aggregator>{};
+  static final _windowAggregators = <int, WindowAggregator>{};
+
   final Pointer<sqlite3> _pointer;
 
   /// Closes the database.
@@ -142,6 +166,9 @@ class Database {
     final statement = prepareStatement(sql);
     try {
       return statement.map(fn);
+    } catch (error) {
+      statement.reset();
+      rethrow;
     } finally {
       statement.finalize();
     }
@@ -157,6 +184,299 @@ class Database {
     return rows.first == 'ok' ? null : rows;
   }
 
+  /// Creates an application defined scalar function.
+  void createScalarFunction(
+    String name,
+    Object? Function(List<Value> arguments) handler, {
+    int? argumentCount,
+    bool deterministic = false,
+    bool directOnly = false,
+    bool innocuous = false,
+  }) {
+    _createFunction(
+      name: name,
+      argumentCount: argumentCount,
+      deterministic: deterministic,
+      directOnly: directOnly,
+      innocuous: innocuous,
+      func: (context, argc, argv) {
+        _callResultFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            assert(argumentCount == null || argc == argumentCount);
+
+            final values = [
+              for (var i = 0; i < argc; i++) Value._(argv[i], this)
+            ];
+
+            return handler(values);
+          },
+        );
+      },
+    );
+  }
+
+  /// Creates an application defined aggregate function.
+  void createAggregateFunction(
+    String name,
+    Aggregator Function() createAggregator, {
+    int? argumentCount,
+    bool deterministic = false,
+    bool directOnly = false,
+    bool innocuous = false,
+  }) {
+    _createFunction(
+      name: name,
+      argumentCount: argumentCount,
+      deterministic: deterministic,
+      directOnly: directOnly,
+      innocuous: innocuous,
+      step: (context, argc, argv) {
+        _callFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            assert(argumentCount == null || argc == argumentCount);
+
+            final aggregatorIdPointer =
+                sqlite3_aggregate_context(context, 8 * 8 /* 64 bits */)
+                    .cast<Int64>();
+            if (aggregatorIdPointer == nullptr) {
+              throw SQLiteException(
+                'Failed to allocate memory for aggregate context.',
+                ErrorCode(SQLITE_NOMEM),
+              );
+            }
+
+            final aggregator = _aggregators.putIfAbsent(
+              aggregatorIdPointer.value,
+              createAggregator,
+            );
+
+            final values = [
+              for (var i = 0; i < argc; i++) Value._(argv[i], this)
+            ];
+
+            aggregator.onRow(values);
+          },
+        );
+      },
+      final_: (context) {
+        _callResultFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            final aggregatorIdPointer =
+                sqlite3_aggregate_context(context, 0).cast<Int64>();
+            return _aggregators.remove(aggregatorIdPointer.value)!.finalize();
+          },
+        );
+      },
+    );
+  }
+
+  /// Creates an application defined window function.
+  void createWindowFunction(
+    String name,
+    WindowAggregator Function() createAggregator, {
+    int? argumentCount,
+    bool deterministic = false,
+    bool directOnly = false,
+    bool innocuous = false,
+  }) {
+    _createFunction(
+      name: name,
+      argumentCount: argumentCount,
+      deterministic: deterministic,
+      directOnly: directOnly,
+      innocuous: innocuous,
+      step: (context, argc, argv) {
+        _callFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            assert(argumentCount == null || argc == argumentCount);
+
+            final aggregatorIdPointer =
+                sqlite3_aggregate_context(context, 8 * 8 /* 64 bits */)
+                    .cast<Int64>();
+            if (aggregatorIdPointer == nullptr) {
+              throw SQLiteException(
+                'Failed to allocate memory for aggregate context.',
+                ErrorCode(SQLITE_NOMEM),
+              );
+            }
+
+            final aggregator = _windowAggregators.putIfAbsent(
+              aggregatorIdPointer.value,
+              createAggregator,
+            );
+
+            final values = [
+              for (var i = 0; i < argc; i++) Value._(argv[i], this)
+            ];
+
+            aggregator.onRow(values);
+          },
+        );
+      },
+      final_: (context) {
+        _callResultFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            final aggregatorIdPointer =
+                sqlite3_aggregate_context(context, 0).cast<Int64>();
+            return _windowAggregators
+                .remove(aggregatorIdPointer.value)!
+                .finalize();
+          },
+        );
+      },
+      value: (context) {
+        _callResultFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            final aggregatorIdPointer =
+                sqlite3_aggregate_context(context, 0).cast<Int64>();
+            return _windowAggregators[aggregatorIdPointer.value]!.currentValue;
+          },
+        );
+      },
+      inverse: (context, argc, argv) {
+        _callFunctionHandler(
+          name: name,
+          context: context,
+          handler: () {
+            assert(argumentCount == null || argc == argumentCount);
+
+            final aggregatorIdPointer =
+                sqlite3_aggregate_context(context, 0).cast<Int64>();
+
+            final aggregator = _windowAggregators[aggregatorIdPointer.value]!;
+
+            final values = [
+              for (var i = 0; i < argc; i++) Value._(argv[i], this)
+            ];
+
+            aggregator.onRemoveRow(values);
+          },
+        );
+      },
+    );
+  }
+
+  @pragma('vm:prefer-inline')
+  void _createFunction({
+    required String name,
+    required int? argumentCount,
+    required bool deterministic,
+    required bool directOnly,
+    required bool innocuous,
+    sqlite3_func_callback? func,
+    sqlite3_step_callback? step,
+    sqlite3_final_callback? final_,
+    sqlite3_value_callback? value,
+    sqlite3_inverse_callback? inverse,
+  }) {
+    assert(
+      func == null ||
+          (step == null && final_ == null && value == null && inverse == null),
+    );
+    assert((step == null) == (final_ == null));
+    assert((value == null) == (inverse == null));
+    assert(value == null || step != null);
+
+    argumentCount ??= -1;
+
+    var flags = SQLITE_UTF8;
+    if (deterministic) {
+      flags |= SQLITE_DETERMINISTIC;
+    }
+    if (directOnly) {
+      flags |= SQLITE_DIRECTONLY;
+    }
+    if (innocuous) {
+      flags |= SQLITE_INNOCUOUS;
+    }
+
+    final callables = <NativeCallable>[];
+
+    NativeCallable<sqlite3_func_callback_native>? funcCallable;
+    if (func != null) {
+      funcCallable = NativeCallable.isolateLocal(func);
+      callables.add(funcCallable);
+    }
+
+    NativeCallable<sqlite3_step_callback_native>? stepCallable;
+    if (step != null) {
+      stepCallable = NativeCallable.isolateLocal(step);
+      callables.add(stepCallable);
+    }
+
+    NativeCallable<sqlite3_final_callback_native>? finalCallable;
+    if (final_ != null) {
+      finalCallable = NativeCallable.isolateLocal(final_);
+      callables.add(finalCallable);
+    }
+
+    NativeCallable<sqlite3_value_callback_native>? valueCallable;
+    if (value != null) {
+      valueCallable = NativeCallable.isolateLocal(value);
+      callables.add(valueCallable);
+    }
+
+    NativeCallable<sqlite3_inverse_callback_native>? inverseCallable;
+    if (inverse != null) {
+      inverseCallable = NativeCallable.isolateLocal(inverse);
+      callables.add(inverseCallable);
+    }
+
+    void destructor(Pointer<Void> _) {
+      for (var callable in callables) {
+        callable.close();
+      }
+    }
+
+    final destructorCallable =
+        NativeCallable<sqlite3_destructor_native>.isolateLocal(destructor);
+    callables.add(destructorCallable);
+
+    using((arena) {
+      final namePointer = name.toNativeUtf8(allocator: arena).cast<Char>();
+
+      if (func != null) {
+        _checkResult(sqlite3_create_function_v2(
+          /* db */ _pointer,
+          /* zFunctionName */ namePointer,
+          /* nArg */ argumentCount!,
+          /* eTextRep */ flags,
+          /* xApp */ nullptr,
+          /* xFunc */ funcCallable!.nativeFunction,
+          /* xStep */ nullptr,
+          /* xFinal */ nullptr,
+          /* xDestroy */ destructorCallable.nativeFunction,
+        ));
+      } else {
+        _checkResult(sqlite3_create_window_function(
+          /* db */ _pointer,
+          /* zFunctionName */ namePointer,
+          /* nArg */ argumentCount!,
+          /* eTextRep */ flags,
+          /* xApp */ nullptr,
+          /* xStep */ stepCallable!.nativeFunction,
+          /* xFinal */ finalCallable!.nativeFunction,
+          /* xValue */ valueCallable?.nativeFunction ?? nullptr,
+          /* xInverse */ inverseCallable?.nativeFunction ?? nullptr,
+          /* xDestroy */ destructorCallable.nativeFunction,
+        ));
+      }
+    });
+  }
+
+  @pragma('vm:prefer-inline')
   void _checkResult(int resultCode) {
     if (resultCode == SQLITE_OK) {
       return;
@@ -166,6 +486,97 @@ class Database {
       sqlite3_errmsg(_pointer).cast<Utf8>().toDartString(),
       ErrorCode(resultCode),
     );
+  }
+
+  @pragma('vm:prefer-inline')
+  void _callResultFunctionHandler({
+    required String name,
+    required Pointer<sqlite3_context> context,
+    required Object? Function() handler,
+  }) {
+    _callFunctionHandler(
+      name: name,
+      context: context,
+      handler: () {
+        switch (handler()) {
+          case null:
+            sqlite3_result_null(context);
+          case final int result:
+            sqlite3_result_int64(context, result);
+          case final double result:
+            sqlite3_result_double(context, result);
+          case final String result:
+            final encoded = utf8.encode(result);
+            final memory = malloc<Uint8>(encoded.length);
+            memory.asTypedList(encoded.length).setAll(0, encoded);
+            sqlite3_result_text(
+              context,
+              memory.cast(),
+              encoded.length,
+              malloc.nativeFree,
+            );
+          case final Uint8List result:
+            final memory = malloc<Uint8>(result.length);
+            memory.asTypedList(result.length).setAll(0, result);
+            sqlite3_result_blob(
+              context,
+              memory.cast(),
+              result.length,
+              malloc.nativeFree,
+            );
+          case Value(:final _pointer):
+            sqlite3_result_value(context, _pointer);
+          case final result:
+            // TODO: Provide mechanism to log this type of error.
+            throw SQLiteException(
+              'Function "$name" returned value of unsupported type: $result',
+              ErrorCode(SQLITE_INTERNAL),
+            );
+        }
+      },
+    );
+  }
+}
+
+@pragma('vm:prefer-inline')
+void _callFunctionHandler({
+  required String name,
+  required Pointer<sqlite3_context> context,
+  required void Function() handler,
+}) {
+  try {
+    try {
+      handler();
+    } on SQLiteException {
+      rethrow;
+    } on OutOfMemoryError {
+      throw SQLiteException(
+        'Function "$name" encountered an OutOfMemoryError.',
+        ErrorCode(SQLITE_NOMEM),
+      );
+    } catch (error, stackTrace) {
+      // TODO: Provide mechanism to log this type of error.
+      throw SQLiteException(
+        'Function "$name" threw an error of unsupported type: $error\n'
+        '$stackTrace',
+        ErrorCode(SQLITE_INTERNAL),
+      );
+    }
+  } on SQLiteException catch (error) {
+    if (error.errorCode.value == SQLITE_NOMEM) {
+      // TODO: Log this error, since we cannot propagate the error message.
+      // But maybe not since we are already OOM?
+      sqlite3_result_error_nomem(context);
+    } else {
+      using((arena) {
+        sqlite3_result_error(
+          context,
+          error.message.toNativeUtf8(allocator: arena).cast(),
+          -1,
+        );
+        sqlite3_result_error_code(context, error.errorCode.value);
+      });
+    }
   }
 }
 
@@ -535,5 +946,104 @@ enum Datatype {
         return null_;
     }
     throw UnimplementedError('Unknown datatype type: $code');
+  }
+}
+
+/// A dynamically typed SQLite value.
+class Value {
+  Value._(this._pointer, this._db);
+
+  final Pointer<sqlite3_value> _pointer;
+  final Database _db;
+
+  /// Returns the [Datatype] of this value.
+  Datatype get type => Datatype._fromCode(sqlite3_value_type(_pointer));
+
+  /// Returns whether this value is null.
+  bool get isNull => sqlite3_value_type(_pointer) == SQLITE_NULL;
+
+  /// Reads this value as an integer.
+  ///
+  /// If the value is not an integer, it is converted to an integer.
+  int get nonNullableInteger => sqlite3_value_int64(_pointer);
+
+  /// Reads this value as an integer, or null if the value is null.
+  ///
+  /// If the value is not an integer, it is converted to an integer.
+  int? get integer {
+    // This method is optimized for the common case where the value is not null
+    // and not zero.
+    final value = nonNullableInteger;
+    if (value == 0 && isNull) {
+      return null;
+    }
+    return value;
+  }
+
+  /// Reads this value as a floating-point number.
+  ///
+  /// If the value is not a floating-point number, it is converted to a
+  /// floating-point number.
+  double get nonNullableFloat => sqlite3_value_double(_pointer);
+
+  /// Reads this value as a floating-point number, or null if the value is
+  /// null.
+  ///
+  /// If the value is not a floating-point number, it is converted to a
+  /// floating-point number.
+  double? get float {
+    // This method is optimized for the common case where the value is not null
+    // and not zero.
+    final value = nonNullableFloat;
+    if (value == 0 && isNull) {
+      return null;
+    }
+    return value;
+  }
+
+  /// Reads this value as a string, or null if the value is null.
+  ///
+  /// If the value is not a string, it is converted to a string.
+  String? get text {
+    final data = sqlite3_value_text(_pointer).cast<Utf8>();
+    if (data == nullptr) {
+      // Check if out-of-memory error occurred.
+      _db._checkResult(sqlite3_errcode(_db._pointer));
+      return null;
+    }
+    final length = sqlite3_value_bytes(_pointer);
+    return data.toDartString(length: length);
+  }
+
+  /// Reads this value as a blob, or null if the value is null.
+  ///
+  /// If the value is not a blob, it is converted to a blob.
+  Uint8List? get blob {
+    final data = sqlite3_value_blob(_pointer).cast<Uint8>();
+    if (data == nullptr) {
+      // Check if out-of-memory error occurred.
+      _db._checkResult(sqlite3_errcode(_db._pointer));
+      return null;
+    }
+    final length = sqlite3_value_bytes(_pointer);
+    return Uint8List.fromList(data.asTypedList(length));
+  }
+
+  /// Reads this value without converting it.
+  Object? get value {
+    var code = sqlite3_value_type(_pointer);
+    switch (code) {
+      case SQLITE_INTEGER:
+        return nonNullableInteger;
+      case SQLITE_FLOAT:
+        return nonNullableFloat;
+      case SQLITE_TEXT:
+        return text;
+      case SQLITE_BLOB:
+        return blob;
+      case SQLITE_NULL:
+        return null;
+    }
+    throw UnimplementedError('Unknown datatype code: $code');
   }
 }

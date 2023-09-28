@@ -33,8 +33,7 @@ external ffi.Pointer<ffi.Char> sqlite3_compileoption_get(
 @ffi.Native<ffi.Int Function()>(symbol: 'sqlite3_threadsafe', isLeaf: true)
 external int sqlite3_threadsafe();
 
-@ffi.Native<ffi.Int Function(ffi.Pointer<sqlite3>)>(
-    symbol: 'sqlite3_close', isLeaf: true)
+@ffi.Native<ffi.Int Function(ffi.Pointer<sqlite3>)>(symbol: 'sqlite3_close')
 external int sqlite3_close(
   ffi.Pointer<sqlite3> arg0,
 );
@@ -953,8 +952,7 @@ external ffi.Pointer<ffi.Void> sqlite3_column_decltype16(
   int arg1,
 );
 
-@ffi.Native<ffi.Int Function(ffi.Pointer<sqlite3_stmt>)>(
-    symbol: 'sqlite3_step', isLeaf: true)
+@ffi.Native<ffi.Int Function(ffi.Pointer<sqlite3_stmt>)>(symbol: 'sqlite3_step')
 external int sqlite3_step(
   ffi.Pointer<sqlite3_stmt> arg0,
 );
@@ -1149,7 +1147,7 @@ external int sqlite3_create_function16(
                     ffi.Void Function(ffi.Pointer<sqlite3_context>)>>,
             ffi.Pointer<
                 ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>)>(
-    symbol: 'sqlite3_create_function_v2', isLeaf: true)
+    symbol: 'sqlite3_create_function_v2')
 external int sqlite3_create_function_v2(
   ffi.Pointer<sqlite3> db,
   ffi.Pointer<ffi.Char> zFunctionName,
