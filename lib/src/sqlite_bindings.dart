@@ -2691,6 +2691,16 @@ external int sqlite3_rtree_query_callback(
       xDestructor,
 );
 
+@ffi.Native<ffi.Pointer<ffi.Char> Function()>(
+    symbol: 'read_sqlite3_temp_directory', isLeaf: true)
+external ffi.Pointer<ffi.Char> read_sqlite3_temp_directory();
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Char>)>(
+    symbol: 'write_sqlite3_temp_directory', isLeaf: true)
+external void write_sqlite3_temp_directory(
+  ffi.Pointer<ffi.Char> value,
+);
+
 final class sqlite3 extends ffi.Opaque {}
 
 final class sqlite3_file extends ffi.Struct {

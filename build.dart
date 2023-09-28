@@ -10,8 +10,12 @@ void main(List<String> args) async {
   final cbuilder = CBuilder.library(
     name: 'sqlite',
     assetId: 'package:sqlite_dart_native/src/sqlite_bindings.dart',
+    includes: [
+      'src/sqlite',
+    ],
     sources: [
       'src/sqlite/sqlite3.c',
+      'src/sqlite/compat.c',
     ],
     // TODO: Make build options consumer configurable.
     defines: {

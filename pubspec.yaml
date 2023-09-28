@@ -23,6 +23,7 @@ ffigen:
   headers:
     entry-points:
       - src/sqlite/sqlite3.h
+      - src/sqlite/compat.h
   ffi-native:
   functions:
     # TODO: Consider listing leaf functions explicitly to ensure that we don't
