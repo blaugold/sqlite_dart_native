@@ -90,13 +90,22 @@ void _initializeSQLite() {
   }
 }
 
+/// The interface for an application defined aggregation function.
 abstract interface class Aggregator {
+  /// Called for each row the aggregation function is applied to.
   void onRow(List<Value> arguments);
+
+  /// Called when the aggregation is finalized and must return the result.
   Object? finalize();
 }
 
+/// The interface for an application defined window function.
 abstract interface class WindowAggregator implements Aggregator {
+  /// Called when the window function is evaluated for a row and must return
+  /// the current value of the window function.
   Object? get currentValue;
+
+  /// Called for each row that is removed from the window.
   void onRemoveRow(List<Value> arguments);
 }
 
@@ -175,6 +184,7 @@ class Database {
     return rows.first == 'ok' ? null : rows;
   }
 
+  /// Creates an application defined scalar function.
   void createScalarFunction(
     String name,
     Object? Function(List<Value> arguments) handler, {
@@ -207,6 +217,7 @@ class Database {
     );
   }
 
+  /// Creates an application defined aggregate function.
   void createAggregateFunction(
     String name,
     Aggregator Function() createAggregator, {
@@ -265,6 +276,7 @@ class Database {
     );
   }
 
+  /// Creates an application defined window function.
   void createWindowFunction(
     String name,
     WindowAggregator Function() createAggregator, {
