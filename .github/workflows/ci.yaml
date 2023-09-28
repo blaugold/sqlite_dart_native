@@ -91,10 +91,9 @@ jobs:
     strategy:
       matrix:
         os:
-          # TODO: Enable more platforms once Flutter supports native assets on them.
           - ubuntu-latest
           - macos-latest
-          # - windows-latest
+          - windows-latest
       fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
