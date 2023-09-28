@@ -46,18 +46,47 @@ void main() {
     });
 
     group('createAggregateFunction', () {
-      test('smoke', () {
+      test('sum', () {
         final db = Database.memory();
         addTearDown(db.close);
         db.createAggregateFunction(
-          'test',
+          'sum',
           argumentCount: 1,
           SumAggregator.new,
         );
         db.exec('CREATE TABLE t(value INTEGER)');
         db.exec('INSERT INTO t VALUES (1), (2), (3)');
-        final results = db.execForSingleColumn("SELECT test(value) FROM t");
+        final results = db.execForSingleColumn("SELECT sum(value) FROM t");
         expect(results, [6]);
+      });
+    });
+
+    group('createWindowFunction', () {
+      test('sum', () {
+        final db = Database.memory();
+        addTearDown(db.close);
+        db.createWindowFunction(
+          'sum',
+          argumentCount: 1,
+          SumAggregator.new,
+        );
+        db.exec('CREATE TABLE t(x, y)');
+        db.exec(
+          "INSERT INTO t VALUES "
+          "('a', 4), ('b', 5), ('c', 3), ('d', 8), ('e', 1)",
+        );
+        final results = db.execForSingleColumn(
+          '''
+          SELECT
+            sum(y) OVER (
+              ORDER BY x
+              ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+            )
+          FROM t
+          ORDER BY x
+          ''',
+        );
+        expect(results, [9, 12, 16, 12, 9]);
       });
     });
   });
@@ -204,8 +233,11 @@ void bindParameterTest({
   expect(statement.value(0), valueMatcher);
 }
 
-class SumAggregator implements Aggregator {
+class SumAggregator implements WindowAggregator {
   int _sum = 0;
+
+  @override
+  Object? get currentValue => _sum;
 
   @override
   void onRow(List<Value> arguments) {
@@ -217,6 +249,14 @@ class SumAggregator implements Aggregator {
       );
     }
     _sum += value;
+  }
+
+  @override
+  void onRemoveRow(List<Value> arguments) {
+    // The arguments are guaranteed to be the same as for onRow,
+    // so we don't have to check the type again.
+    final value = arguments[0].nonNullableInteger;
+    _sum -= value;
   }
 
   @override
