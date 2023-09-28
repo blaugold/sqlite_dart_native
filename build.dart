@@ -55,6 +55,10 @@ void main(List<String> args) async {
         'SQLITE_ENABLE_API_ARMOR': null
       }
     },
+    flags: [
+      if (buildConfig.buildMode == BuildMode.release)
+        if (buildConfig.targetOs == OS.windows) '/O2' else '-O3'
+    ],
   );
   await cbuilder.run(
     buildConfig: buildConfig,
